@@ -4,7 +4,7 @@
 
 # Site
 title: CAITBのBlog
-subtitle: CAITBのBlog
+subtitle:
 description:
 keywords:
 author: CAI TB
@@ -13,8 +13,10 @@ timezone:
 
 # URL
 ## If your site is put in a subdirectory, set url as 'http://yoursite.com/child' and root as '/child/'
-url: https://caitb.github.io/
-root: /
+#url: https://caitb.github.io/
+#root: /
+url: https://caitb.gitee.io/note
+root: /note
 permalink: :year/:month/:day/:title/
 permalink_defaults:
 
@@ -86,7 +88,8 @@ theme: melody
 # or this:
 deploy:
 - type: git
-  repo: git@github.com:caitb/caitb.github.io.git
+#  repo: git@github.com:caitb/caitb.github.io.git
+  repo: git@gitee.com:caitb/note.git
   branch: master
 - type: git
   repo: git@github.com:caitb/caitb.github.io.git
