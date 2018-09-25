@@ -1,0 +1,107 @@
+<!DOCTYPE html><html lang="zh-Hans"><head><meta charset="UTF-8"><meta http-equiv="X-UA-Compatible" content="IE=edge"><meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1"><meta name="description" content="【死磕Java并发】-----深入分析volatile的实现原理"><meta name="keywords" content="线程"><meta name="author" content="CAI TB,undefined"><meta name="copyright" content="CAI TB"><title>【死磕Java并发】-----深入分析volatile的实现原理 | CAITBのBlog</title><link rel="shortcut icon" href="/my-favicon.ico"><link rel="stylesheet" href="/css/index.css?version=1.5.6"><link rel="stylesheet" href="/css/vue.css?version=1.5.6"><link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/font-awesome@4.7.0/css/font-awesome.min.css?version=1.5.6"><link rel="dns-prefetch" href="https://cdn.staticfile.org"><link rel="dns-prefetch" href="https://cdn.bootcss.com"><link rel="dns-prefetch" href="https://creativecommons.org"><script>var GLOBAL_CONFIG = { 
+  root: '/',
+  algolia: undefined,
+  localSearch: {"path":"search.xml","languages":{"hits_empty":"找不到您查询的内容:${query}"}},
+  copy: {
+    success: '复制成功',
+    error: '复制错误',
+    noSupport: '浏览器不支持'
+  }
+} </script></head><body><canvas class="fireworks"></canvas><i class="fa fa-arrow-right" id="toggle-sidebar" aria-hidden="true"></i><div class="sidebar" id="sidebar"><div class="toggle-sidebar-info text-center"><span data-toggle="切换文章详情">切换站点概览</span><hr></div><div class="sidebar-toc"><div class="sidebar-toc__title">目录</div><div class="sidebar-toc__progress"><span class="progress-notice">你已经读了</span><span class="progress-num">0</span><span class="progress-percentage">%</span><div class="sidebar-toc__progress-bar"></div></div><div class="sidebar-nav sidebar-toc__content"><ol class="toc"><li class="toc-item toc-level-2"><a class="toc-link" href="#内存模型相关概念"><span class="toc-number">1.</span> <span class="toc-text">内存模型相关概念</span></a><ol class="toc-child"><li class="toc-item toc-level-3"><a class="toc-link" href="#操作系统语义"><span class="toc-number">1.1.</span> <span class="toc-text">操作系统语义</span></a></li><li class="toc-item toc-level-3"><a class="toc-link" href="#Java内存模型"><span class="toc-number">1.2.</span> <span class="toc-text">Java内存模型</span></a><ol class="toc-child"><li class="toc-item toc-level-4"><a class="toc-link" href="#原子性"><span class="toc-number">1.2.1.</span> <span class="toc-text">原子性</span></a></li><li class="toc-item toc-level-4"><a class="toc-link" href="#可见性"><span class="toc-number">1.2.2.</span> <span class="toc-text">可见性</span></a></li><li class="toc-item toc-level-4"><a class="toc-link" href="#有序性"><span class="toc-number">1.2.3.</span> <span class="toc-text">有序性</span></a></li></ol></li></ol></li><li class="toc-item toc-level-2"><a class="toc-link" href="#剖析volatile原理"><span class="toc-number">2.</span> <span class="toc-text">剖析volatile原理</span></a></li><li class="toc-item toc-level-2"><a class="toc-link" href="#总结"><span class="toc-number">3.</span> <span class="toc-text">总结</span></a></li><li class="toc-item toc-level-2"><a class="toc-link" href="#参考资料"><span class="toc-number">4.</span> <span class="toc-text">参考资料</span></a></li></ol></div></div><div class="author-info hide"><div class="author-info__avatar text-center"><img src="https://ws2.sinaimg.cn/large/006tNbRwgy1fvak7x33btj30500500ui.jpg"></div><div class="author-info__name text-center">CAI TB</div><div class="author-info__description text-center"></div><hr><div class="author-info-articles"><a class="author-info-articles__archives article-meta" href="/archives"><span class="pull-left">文章</span><span class="pull-right">27</span></a><a class="author-info-articles__tags article-meta" href="/tags"><span class="pull-left">标签</span><span class="pull-right">11</span></a><a class="author-info-articles__categories article-meta" href="/categories"><span class="pull-left">分类</span><span class="pull-right">2</span></a></div></div></div><div class="content" id="content-outer"><div id="top-container" style="background-image: url(https://ws1.sinaimg.cn/large/006tNbRwgy1fvak4ulv7nj31hc0xc0yl.jpg)"><div id="page-header"><span class="pull-left"> <a id="site-name" href="/">CAITBのBlog</a></span><i class="fa fa-bars toggle-menu pull-right" aria-hidden="true"></i><span class="pull-right menus"><a class="site-page social-icon search"><i class="fa fa-search"></i><span> 搜索</span></a><a class="site-page" href="/">首页</a><a class="site-page" href="/archives">归档</a><a class="site-page" href="/tags">标签</a><a class="site-page" href="/categories">分类</a></span></div><div id="post-info"><div id="post-title">【死磕Java并发】-----深入分析volatile的实现原理</div><div id="post-meta"><time class="post-meta__date"><i class="fa fa-calendar" aria-hidden="true"></i> 2018-08-13</time></div></div></div><div class="layout" id="content-inner"><article class="markdown-section" id="post"><div class="article-container" id="post-content"><blockquote>
+<p>原文出处<a href="http://cmsblogs.com/" target="_blank" rel="noopener">http://cmsblogs.com/</a> 『<strong>chenssy</strong>』</p>
+</blockquote>
+<p>通过前面一章我们了解了synchronized是一个重量级的锁，虽然JVM对它做了很多优化，而下面介绍的volatile则是轻量级的synchronized。如果一个变量使用volatile，则它比使用synchronized的成本更加低，因为它不会引起线程上下文的切换和调度。Java语言规范对volatile的定义如下：</p>
+<blockquote>
+<p>Java编程语言允许线程访问共享变量，为了确保共享变量能被准确和一致地更新，线程应该确保通过排他锁单独获得这个变量。</p>
+</blockquote>
+<p>上面比较绕口，通俗点讲就是说一个变量如果用volatile修饰了，则Java可以确保所有线程看到这个变量的值是一致的，如果某个线程对volatile修饰的共享变量进行更新，那么其他线程可以立马看到这个更新，这就是所谓的线程可见性。</p>
+<p>volatile虽然看起来比较简单，使用起来无非就是在一个变量前面加上volatile即可，但是要用好并不容易（LZ承认我至今仍然使用不好，在使用时仍然是模棱两可）。</p>
+<h2 id="内存模型相关概念"><a href="#内存模型相关概念" class="headerlink" title="内存模型相关概念"></a><strong>内存模型相关概念</strong></h2><p>理解volatile其实还是有点儿难度的，它与Java的内存模型有关，所以在理解volatile之前我们需要先了解有关Java内存模型的概念，这里只做初步的介绍，后续LZ会详细介绍Java内存模型。</p>
+<h3 id="操作系统语义"><a href="#操作系统语义" class="headerlink" title="操作系统语义"></a><strong>操作系统语义</strong></h3><p>计算机在运行程序时，每条指令都是在CPU中执行的，在执行过程中势必会涉及到数据的读写。我们知道程序运行的数据是存储在主存中，这时就会有一个问题，读写主存中的数据没有CPU中执行指令的速度快，如果任何的交互都需要与主存打交道则会大大影响效率，所以就有了CPU高速缓存。CPU高速缓存为某个CPU独有，只与在该CPU运行的线程有关。</p>
+<p>有了CPU高速缓存虽然解决了效率问题，但是它会带来一个新的问题：数据一致性。在程序运行中，会将运行所需要的数据复制一份到CPU高速缓存中，在进行运算时CPU不再也主存打交道，而是直接从高速缓存中读写数据，只有当运行结束后才会将数据刷新到主存中。举一个简单的例子：</p>
+<figure class="highlight java"><table><tr><td class="gutter"><pre><span class="line">1</span><br></pre></td><td class="code"><pre><span class="line">i++</span><br></pre></td></tr></table></figure>
+<p>当线程运行这段代码时，首先会从主存中读取i( i = 1)，然后复制一份到CPU高速缓存中，然后CPU执行 + 1 （2）的操作，然后将数据（2）写入到告诉缓存中，最后刷新到主存中。其实这样做在单线程中是没有问题的，有问题的是在多线程中。如下：</p>
+<p>假如有两个线程A、B都执行这个操作（i++），按照我们正常的逻辑思维主存中的i值应该=3，但事实是这样么？分析如下：</p>
+<p>两个线程从主存中读取i的值（1）到各自的高速缓存中，然后线程A执行+1操作并将结果写入高速缓存中，最后写入主存中，此时主存i==2,线程B做同样的操作，主存中的i仍然=2。所以最终结果为2并不是3。这种现象就是缓存一致性问题。</p>
+<p>解决缓存一致性方案有两种：</p>
+<ol>
+<li>通过在总线加LOCK#锁的方式</li>
+<li>通过缓存一致性协议</li>
+</ol>
+<p>但是方案1存在一个问题，它是采用一种独占的方式来实现的，即总线加LOCK#锁的话，只能有一个CPU能够运行，其他CPU都得阻塞，效率较为低下。</p>
+<p>第二种方案，缓存一致性协议（MESI协议）它确保每个缓存中使用的共享变量的副本是一致的。其核心思想如下：当某个CPU在写数据时，如果发现操作的变量是共享变量，则会通知其他CPU告知该变量的缓存行是无效的，因此其他CPU在读取该变量时，发现其无效会重新从主存中加载数据。  </p>
+<p><img src="https://ask.qcloudimg.com/http-save/yehe-1655470/dnqsj0nbty.jpeg?imageView2/2/w/1620" alt="img"></p>
+<h3 id="Java内存模型"><a href="#Java内存模型" class="headerlink" title="Java内存模型"></a><strong>Java内存模型</strong></h3><p>上面从操作系统层次阐述了如何保证数据一致性，下面我们来看一下Java内存模型，稍微研究一下Java内存模型为我们提供了哪些保证以及在Java中提供了哪些方法和机制来让我们在进行多线程编程时能够保证程序执行的正确性。</p>
+<p>在并发编程中我们一般都会遇到这三个基本概念：原子性、可见性、有序性。我们稍微看下volatile</p>
+<h4 id="原子性"><a href="#原子性" class="headerlink" title="原子性"></a><strong>原子性</strong></h4><blockquote>
+<p>原子性：即一个操作或者多个操作 要么全部执行并且执行的过程不会被任何因素打断，要么就都不执行。</p>
+</blockquote>
+<p>原子性就像数据库里面的事务一样，他们是一个团队，同生共死。其实理解原子性非常简单，我们看下面一个简单的例子即可：</p>
+<figure class="highlight java"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br></pre></td><td class="code"><pre><span class="line">i = <span class="number">0</span>;            <span class="comment">//---1</span></span><br><span class="line">j = i ;           <span class="comment">//---2</span></span><br><span class="line">i++;              <span class="comment">//---3</span></span><br><span class="line">i = j + <span class="number">1</span>;        <span class="comment">//---4</span></span><br></pre></td></tr></table></figure>
+<p>上面四个操作，有哪个几个是原子操作，那几个不是？如果不是很理解，可能会认为都是原子性操作，其实只有1才是原子操作，其余均不是。</p>
+<p>1—在Java中，对基本数据类型的变量和赋值操作都是原子性操作；  2—包含了两个操作：读取i，将i值赋值给j  3—包含了三个操作：读取i值、i + 1 、将+1结果赋值给i；  4—同三一样</p>
+<p>在单线程环境下我们可以认为整个步骤都是原子性操作，但是在多线程环境下则不同，Java只保证了基本数据类型的变量和赋值操作才是原子性的（<strong>注：在32位的JDK环境下，对64位数据的读取不是原子性操作*，如long、double</strong>）。要想在多线程环境下保证原子性，则可以通过锁、synchronized来确保。</p>
+<blockquote>
+<p>volatile是无法保证复合操作的原子性</p>
+</blockquote>
+<h4 id="可见性"><a href="#可见性" class="headerlink" title="可见性"></a><strong>可见性</strong></h4><blockquote>
+<p>可见性是指当多个线程访问同一个变量时，一个线程修改了这个变量的值，其他线程能够立即看得到修改的值。</p>
+</blockquote>
+<p>在上面已经分析了，在多线程环境下，一个线程对共享变量的操作对其他线程是不可见的。</p>
+<p><strong>Java提供了volatile来保证可见性。</strong></p>
+<p>当一个变量被volatile修饰后，表示着线程本地内存无效，当一个线程修改共享变量后他会立即被更新到主内存中，当其他线程读取共享变量时，它会直接从主内存中读取。  当然，synchronize和锁都可以保证可见性。</p>
+<h4 id="有序性"><a href="#有序性" class="headerlink" title="有序性"></a><strong>有序性</strong></h4><blockquote>
+<p>有序性：即程序执行的顺序按照代码的先后顺序执行。</p>
+</blockquote>
+<p>在Java内存模型中，为了效率是允许编译器和处理器对指令进行重排序，当然重排序它不会影响单线程的运行结果，但是对多线程会有影响。</p>
+<p>Java提供volatile来保证一定的有序性。最著名的例子就是单例模式里面的DCL（双重检查锁）。这里LZ就不再阐述了。</p>
+<h2 id="剖析volatile原理"><a href="#剖析volatile原理" class="headerlink" title="剖析volatile原理"></a><strong>剖析volatile原理</strong></h2><p>JMM比较庞大，不是上面一点点就能够阐述的。上面简单地介绍都是为了volatile做铺垫的。</p>
+<blockquote>
+<p>volatile可以保证线程可见性且提供了一定的有序性，但是无法保证原子性。在JVM底层volatile是采用“内存屏障”来实现的。</p>
+</blockquote>
+<p>上面那段话，有两层语义</p>
+<ol>
+<li>保证可见性、不保证原子性</li>
+<li>禁止指令重排序</li>
+</ol>
+<p>第一层语义就不做介绍了，下面重点介绍指令重排序。</p>
+<p>在执行程序时为了提高性能，编译器和处理器通常会对指令做重排序：</p>
+<ol>
+<li>编译器重排序。编译器在不改变单线程程序语义的前提下，可以重新安排语句的执行顺序；</li>
+<li>处理器重排序。如果不存在数据依赖性，处理器可以改变语句对应机器指令的执行顺序；</li>
+</ol>
+<p>指令重排序对单线程没有什么影响，他不会影响程序的运行结果，但是会影响多线程的正确性。既然指令重排序会影响到多线程执行的正确性，那么我们就需要禁止重排序。那么JVM是如何禁止重排序的呢？这个问题稍后回答，我们先看另一个原则happens-before，happen-before原则保证了程序的“有序性”，它规定如果两个操作的执行顺序无法从happens-before原则中推到出来，那么他们就不能保证有序性，可以随意进行重排序。其定义如下：</p>
+<ol>
+<li>同一个线程中的，前面的操作 happen-before 后续的操作。（即单线程内按代码顺序执行。但是，在不影响在单线程环境执行结果的前提下，编译器和处理器可以进行重排序，这是合法的。换句话说，这一是规则无法保证编译重排和指令重排）。</li>
+<li>监视器上的解锁操作 happen-before 其后续的加锁操作。（Synchronized 规则）</li>
+<li>对volatile变量的写操作 happen-before 后续的读操作。（volatile 规则）</li>
+<li>线程的start() 方法 happen-before 该线程所有的后续操作。（线程启动规则）</li>
+<li>线程所有的操作 happen-before 其他线程在该线程上调用 join 返回成功后的操作。</li>
+<li>如果 a happen-before b，b happen-before c，则a happen-before c（传递性）。</li>
+</ol>
+<p>我们着重看第三点volatile规则：对volatile变量的写操作 happen-before 后续的读操作。为了实现volatile内存语义，JMM会重排序，其规则如下：</p>
+<p>对happen-before原则有了稍微的了解，我们再来回答这个问题JVM是如何禁止重排序的？</p>
+<p><img src="https://ask.qcloudimg.com/http-save/yehe-1655470/7o8333edjf.jpeg?imageView2/2/w/1620" alt="img"></p>
+<p><strong>观察加入volatile关键字和没有加入volatile关键字时所生成的汇编代码发现，加入volatile关键字时，会多出一个lock前缀指令</strong>。lock前缀指令其实就相当于一个内存屏障。内存屏障是一组处理指令，用来实现对内存操作的顺序限制。volatile的底层就是通过内存屏障来实现的。下图是完成上述规则所需要的内存屏障：</p>
+<p>volatile暂且下分析到这里，JMM体系较为庞大，不是三言两语能够说清楚的，后面会结合JMM再一次对volatile深入分析。</p>
+<p><img src="https://ask.qcloudimg.com/http-save/yehe-1655470/ubud8jfs6l.jpeg?imageView2/2/w/1620" alt="img"></p>
+<h2 id="总结"><a href="#总结" class="headerlink" title="总结"></a><strong>总结</strong></h2><p>volatile看起来简单，但是要想理解它还是比较难的，这里只是对其进行基本的了解。volatile相对于synchronized稍微轻量些，在某些场合它可以替代synchronized，但是又不能完全取代synchronized，只有在某些场合才能够使用volatile。使用它必须满足如下两个条件：</p>
+<ol>
+<li>对变量的写操作不依赖当前值；</li>
+<li>该变量没有包含在具有其他变量的不变式中。</li>
+</ol>
+<blockquote>
+<p>volatile经常用于两个两个场景：状态标记两、double check </p>
+</blockquote>
+<h2 id="参考资料"><a href="#参考资料" class="headerlink" title="参考资料"></a><strong>参考资料</strong></h2><ol>
+<li>周志明：《深入理解Java虚拟机》</li>
+<li>方腾飞：《Java并发编程的艺术》 </li>
+<li>Java并发编程：volatile关键字解析</li>
+<li>Java 并发编程：volatile的使用及其原理</li>
+</ol>
+<p>END</p>
+<p>原文发布于微信公众号 - Java技术驿站（chenssy89）</p>
+<p>原文发表时间：2018-05-05</p>
+<p>本文参与<a href="https://cloud.tencent.com/developer/support-plan" target="_blank" rel="noopener">腾讯云自媒体分享计划</a>，欢迎正在阅读的你也加入，一起分享。</p>
+</div></article><div class="post-copyright"><div class="post-copyright__author"><span class="post-copyright-meta">文章作者: </span><span class="post-copyright-info"><a href="mailto:undefined">CAI TB</a></span></div><div class="post-copyright__type"><span class="post-copyright-meta">文章链接: </span><span class="post-copyright-info"><a href="https://caitb.github.io/2018/08/13/thread/死磕Java并发/深入分析volatile的实现原理/">https://caitb.github.io/2018/08/13/thread/死磕Java并发/深入分析volatile的实现原理/</a></span></div><div class="post-copyright__notice"><span class="post-copyright-meta">版权声明: </span><span class="post-copyright-info">本博客所有文章除特别声明外，均采用 <a href="https://creativecommons.org/licenses/by-nc-sa/4.0/" target="_blank">CC BY-NC-SA 4.0</a> 许可协议。转载请注明来自 <a href="https://caitb.github.io" target="_blank">CAITBのBlog</a>！</span></div></div><div class="post-meta__tag-list"><a class="post-meta__tags" href="/tags/线程/">线程</a></div><nav id="pagination"><div class="prev-post pull-left"><a href="/2018/08/13/thread/谈谈高并发下的幂等性处理/"><i class="fa fa-chevron-left">  </i><span></span></a></div><div class="next-post pull-right"><a href="/2018/08/13/thread/我为什么要选择RabbitMQ ，RabbitMQ简介，各种MQ选型对比/"><span></span><i class="fa fa-chevron-right"></i></a></div></nav></div></div><footer><div class="layout" id="footer"><div class="copyright">&copy;2013 - 2018 By CAI TB</div><div class="framework-info"><span>驱动 - </span><a href="http://hexo.io"><span>Hexo</span></a><span class="footer-separator">|</span><span>主题 - </span><a href="https://github.com/Molunerfinn/hexo-theme-melody"><span>Melody</span></a></div><div class="busuanzi"><script async src="//dn-lbstatics.qbox.me/busuanzi/2.3/busuanzi.pure.mini.js"></script><span id="busuanzi_container_page_pv"><i class="fa fa-file-o"></i><span id="busuanzi_value_page_pv"></span><span></span></span></div></div></footer><i class="fa fa-arrow-up" id="go-up" aria-hidden="true"></i><script src="/js/third-party/anime.min.js"></script><script src="/js/third-party/jquery.min.js"></script><script src="/js/third-party/jquery.easing.1.3.js"></script><script src="/js/third-party/jquery.fancybox.min.js"></script><script src="/js/third-party/velocity.min.js"></script><script src="/js/third-party/velocity.ui.min.js"></script><script src="/js/utils.js?version=1.5.6"></script><script src="/js/fancybox.js?version=1.5.6"></script><script src="/js/sidebar.js?version=1.5.6"></script><script src="/js/copy.js?version=1.5.6"></script><script src="/js/fireworks.js?version=1.5.6"></script><script src="/js/transition.js?version=1.5.6"></script><script src="/js/scroll.js?version=1.5.6"></script><script src="/js/head.js?version=1.5.6"></script><script src="/js/search/local-search.js"></script><div class="search-dialog" id="local-search"><div class="search-dialog__title" id="local-search-title">本地搜索</div><div id="local-input-panel"><div id="local-search-input"><div class="local-search-box"><input class="local-search-box--input" placeholder="搜索文章"></div></div></div><hr><div id="local-search-results"><div id="local-hits"></div><div id="local-stats"><div class="local-search-stats__hr" id="hr"><span>由</span> <a href="https://github.com/wzpan/hexo-generator-search" style="color:#49B1F5;">hexo-generator-search</a>
+ <span>提供支持</span></div></div></div><span class="search-close-button"><i class="fa fa-times"></i></span></div><div class="search-mask"></div></body></html>
